@@ -1,0 +1,6 @@
+node_modules/
+.env
+password.env
+backups/
+database/
+addcolumn.js
