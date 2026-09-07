@@ -10,11 +10,14 @@ const db = require("../db");
 
 const sensorConfig = {
 
+    // ECG is stored as packets
     ecg: {
-        table: "ecgdata",
-        column: "ecg_value"
+        table: "ecg_packets",
+        column: "ecg_values",
+        packet: true
     },
 
+    // Other sensors are stored normally
     spo2: {
         table: "vitals_data",
         column: "spo2"
@@ -64,6 +67,10 @@ router.get("/:type", (req, res) => {
         parseInt(req.query.limit) || 500;
 
 
+    // ========================================================
+    // VALIDATE DATE
+    // ========================================================
+
     if (!date) {
 
         return res.status(400).json({
@@ -72,6 +79,10 @@ router.get("/:type", (req, res) => {
 
     }
 
+
+    // ========================================================
+    // GET SENSOR CONFIGURATION
+    // ========================================================
 
     const config = sensorConfig[type];
 
@@ -84,6 +95,125 @@ router.get("/:type", (req, res) => {
 
     }
 
+
+    // ========================================================
+    // ECG PACKET HISTORY
+    // ========================================================
+
+    if (config.packet) {
+
+        const sql = `
+            SELECT
+                ecg_values,
+                created_at
+            FROM \`${config.table}\`
+            WHERE patient_id = ?
+            AND DATE(created_at) = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        `;
+
+
+        db.query(
+            sql,
+            [patientId, date, limit],
+
+            (err, results) => {
+
+                if (err) {
+
+                    console.error(
+                        "ECG history error:",
+                        err
+                    );
+
+                    return res.status(500).json({
+                        error: "Database error"
+                    });
+
+                }
+
+
+                // =================================================
+                // EXPAND PACKETS INTO INDIVIDUAL ECG VALUES
+                // =================================================
+
+                const expanded = [];
+
+
+                // We selected newest packets first.
+                // Reverse them so the oldest packet comes first.
+                results.reverse().forEach(packet => {
+
+                    let samples;
+
+
+                    try {
+
+                        samples =
+                            typeof packet.ecg_values === "string"
+                                ? JSON.parse(packet.ecg_values)
+                                : packet.ecg_values;
+
+                    } catch (error) {
+
+                        console.error(
+                            "Invalid ECG JSON:",
+                            error
+                        );
+
+                        return;
+                    }
+
+
+                    // Make sure JSON contains an array
+                    if (!Array.isArray(samples)) {
+
+                        console.error(
+                            "ECG packet is not an array"
+                        );
+
+                        return;
+                    }
+
+
+                    // Put every ECG sample into the response
+                    samples.forEach(value => {
+
+                        expanded.push({
+
+                            value: value,
+
+                            created_at:
+                                packet.created_at
+
+                        });
+
+                    });
+
+                });
+
+
+                // =================================================
+                // RETURN ECG DATA
+                // =================================================
+
+                res.json(expanded);
+
+            }
+        );
+
+
+        // IMPORTANT:
+        // Stop here so the normal sensor query below
+        // doesn't execute for ECG.
+        return;
+    }
+
+
+    // ============================================================
+    // NORMAL SENSOR HISTORY
+    // ============================================================
 
     const sql = `
         SELECT *
