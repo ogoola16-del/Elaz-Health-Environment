@@ -73,19 +73,6 @@ app.use(
 );
 
 // =========================
-// DATABASE
-// =========================
-const createOrganizationTable =
-    require("./database/organizationTable");
-
-const createDoctorTable =
-    require("./database/doctorTable");
-
-createOrganizationTable();
-createDoctorTable();
-
-
-// =========================
 // HOME PAGE
 // =========================
 
